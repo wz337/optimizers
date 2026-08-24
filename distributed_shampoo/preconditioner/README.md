@@ -330,6 +330,7 @@ def matrix_inverse_root(
 - **Eigendecomposition**: Most stable, best for symmetric positive definite matrices
 - **Newton Iteration**: Fast convergence for well-conditioned matrices
 - **Higher-Order Coupled**: Advanced methods for fractional powers
+- **Newton-Schulz** (`NewtonSchulzRootInvConfig`): opt-in, matmul-only; only power-of-two roots (orders 1, 2, 4)
 
 #### Eigendecomposition
 ```python

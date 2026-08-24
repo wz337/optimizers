@@ -21,6 +21,7 @@ from distributed_shampoo.distributed_shampoo import DistributedShampoo
 from distributed_shampoo.preconditioner.matrix_functions_types import (
     DefaultNewtonSchulzOrthogonalizationConfig,
     EigenConfig,
+    NewtonSchulzRootInvConfig,
     OrthogonalizationConfig,
     PseudoInverseConfig,
 )
@@ -69,6 +70,50 @@ def _pack_if_enabled(
         and config.use_symmetric_packing
         else matrix
     )
+
+
+@instantiate_parametrized_tests
+class DistributedShampooNewtonSchulzTest(unittest.TestCase):
+    """Optimizer-level guards for the Newton-Schulz inverse root.
+
+    The numerics live in NewtonSchulzRootInverseTest (preconditioner/tests/matrix_functions_test.py);
+    what can only be checked here is that an unsupported root is rejected while constructing the
+    optimizer, since the block orders that determine the root come from DistributedShampoo's
+    parameter blocking."""
+
+    @staticmethod
+    def _optim_factory(
+        parameters: Any,
+        preconditioner_config: PreconditionerConfig,
+    ) -> torch.optim.Optimizer:
+        return DistributedShampoo(
+            parameters,
+            lr=0.01,
+            betas=(0.9, 0.999),
+            epsilon=1e-8,
+            max_preconditioner_dim=5,
+            precondition_frequency=1,
+            start_preconditioning_step=1,
+            preconditioner_config=preconditioner_config,
+        )
+
+    def test_unsupported_root_fails_fast(self) -> None:
+        """An order-3 block asks for root 6, which Newton-Schulz cannot compute. This must raise at
+        optimizer construction rather than be swallowed as a per-factor-matrix warning during
+        training that silently reuses a stale preconditioner."""
+        model = nn.ParameterList([nn.Parameter(torch.randn(4, 4, 4))])
+        self.assertRaisesRegex(
+            ValueError,
+            re.escape(
+                "NewtonSchulzRootInvConfig only supports inverse roots that are powers of two, but "
+                "unsupported_roots=[6.0] were requested."
+            ),
+            DistributedShampooNewtonSchulzTest._optim_factory,
+            model.parameters(),
+            preconditioner_config=RootInvShampooPreconditionerConfig(
+                amortized_computation_config=NewtonSchulzRootInvConfig()
+            ),
+        )
 
 
 @instantiate_parametrized_tests
